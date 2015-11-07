@@ -1,18 +1,7 @@
 (ns scad-clj.model
   (:refer-clojure :exclude [import use])
   (:require [clojure.walk :refer [postwalk]]
-            [clojure.core.match :refer [match]]
-            [scad-clj.text :refer [text-parts]]
-            ))
-
-(def pi Math/PI)
-(def tau (* 2 pi))
-
-(defn rad->deg [radians]
-  (/ (* radians 180) pi))
-
-(defn deg->rad [degrees]
-  (* (/ degrees 180) pi))
+            [clojure.core.match :refer [match]]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; special variables
@@ -97,6 +86,10 @@
      `(:polygon {:points ~points}))
   ([points paths & {:keys [convexity]}]
      `(:polygon {:points ~points, :paths ~paths, :convexity ~convexity})))
+
+(defn text [text & {:as args}]
+  (let [args (merge {:text text} args)]
+    `(:text ~args)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 3D
@@ -206,48 +199,3 @@
     (let [[c & bl] block]
       `(:render {:convexity ~c} ~@bl))
     `(:render {:convexity 1} ~@block)))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; text
-
-(defn text [text & {:as args}]
-  (let [args (merge {:text text} args)]
-    `(:text ~args)))
-
-(defn polygon-text [font size text]
-  (let [even-odd-paths (text-parts font size text)]
-    (:shape
-     (reduce (fn [{:keys [union? shape]} paths]
-               (if union?
-                 {:union? false
-                  :shape (apply union shape (map polygon paths))}
-                 {:union? true
-                  :shape (apply difference shape (map polygon paths))}))
-             {:union? true}
-             even-odd-paths))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; extended
-
-(defn extrude-curve [{:keys [height radius angle n]} block]
-  (let [lim (Math/floor (/ n 2))
-        phi (/ (/ angle (dec n)) 2)]
-    (apply union
-           (map (fn [x]
-                  (let [theta (* 0.5 angle (/ x lim) )
-                        r radius
-                        dx (* r (- (Math/sin theta)
-                                   (* theta (Math/cos theta))))
-                        dz (* r (+ (Math/cos theta)
-                                   (* theta (Math/sin theta)) (- 1)))]
-                    (translate [(+ dx (* 0 (Math/sin theta) (/ height 2)))
-                                0
-                                (+ dz (* 0 (Math/cos theta) (/ height 2)))]
-                      (rotate theta [0 1 0]
-                        (intersection
-                         (translate [(* r theta) 0 0]
-                           (cube (* 2 (+  r height) (Math/sin phi))
-                                 1000 (* 2 height)))
-                         (extrude-linear {:height height}
-                           block))))))
-                (range (- lim) (inc lim))))))

@@ -1,6 +1,5 @@
-(ns scad-clj.scad
-  (:require [clojure.string :refer [join]]
-            [scad-clj.model :refer [rad->deg]]))
+(ns scad-clj.write
+  (:require [clojure.string :refer [join]]))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; multimethod
@@ -24,14 +23,17 @@
 (defn write-block [depth block]
   (mapcat #(write-expr (inc depth) %1) block))
 
+(defn write-level [operation depth block]
+  (concat
+    (list (indent depth) (str operation " {\n"))
+    (write-block depth block)
+    (list (indent depth) "}\n")))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Modifier
 
 (defmethod write-expr :modifier [depth [form modifier & block]]
-  (concat
-   (list (indent depth) modifier "union () {\n")
-   (write-block depth block)
-   (list (indent depth) "}\n")))
+  (write-level (str modifier "union()") depth block))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; include and call into scad libraries.
@@ -59,7 +61,7 @@
   (list (indent depth) "use <" library">\n"))
 
 (defmethod write-expr :import [depth [form file]]
-  (list (indent depth) "import (\"" file "\");\n"))
+  (list (indent depth) "import(\"" file "\");\n"))
 
 (defmethod write-expr :call [depth [form {:keys [function]} & args]]
   (list (indent depth) function "(" (make-arguments (apply vec args)) ");\n"))
@@ -71,21 +73,21 @@
   (let [fargs (str (and fa (str "$fa=" fa ", "))
                    (and fn (str "$fn=" fn ", "))
                    (and fs (str "$fs=" fs ", ")))]
-    (list (indent depth) "circle (" fargs "r=" r ");\n")))
+    (list (indent depth) "circle(" fargs "r=" r ");\n")))
 
 (defmethod write-expr :square [depth [form {:keys [x y center]}]]
-  (list (indent depth) "square ([" x ", " y "]"
+  (list (indent depth) "square([" x ", " y "]"
         (when center ", center=true") ");\n"))
 
 (defmethod write-expr :polygon [depth [form {:keys [points paths convexity]}]]
-  `(~@(indent depth) "polygon ("
+  `(~@(indent depth) "polygon("
     "points=[[" ~(join "], [" (map #(join ", " %1) points)) "]]"
     ~@(when paths [", paths=[[" (join "], [" (map #(join "," %1) paths)) "]]"])
     ~@(when convexity [", convexity=" convexity])
     ");\n"))
 
 (defmethod write-expr :text [depth [form {:keys [text size font halign valign spacing direction language script]}]]
-  (list (indent depth) "text (\"" text "\""
+  (list (indent depth) "text(\"" text "\""
         (when size (str ", size=" size))
         (when font (str ", font=\"" font "\""))
         (when halign (str ", halign=\"" halign "\""))
@@ -102,10 +104,10 @@
   (let [fargs (str (and fa (str "$fa=" fa ", "))
                    (and fn (str "$fn=" fn ", "))
                    (and fs (str "$fs=" fs ", ")))]
-    (list (indent depth) "sphere (" fargs "r=" r ");\n")))
+    (list (indent depth) "sphere(" fargs "r=" r ");\n")))
 
 (defmethod write-expr :cube [depth [form {:keys [x y z center]}]]
-  (list (indent depth) "cube ([" x ", " y ", " z "]"
+  (list (indent depth) "cube([" x ", " y ", " z "]"
         (when center ", center=true") ");\n"))
 
 (defmethod write-expr :cylinder [depth [form {:keys [h r r1 r2 fa fn fs center]}]]
@@ -113,13 +115,13 @@
                    (and fn (str "$fn=" fn ", "))
                    (and fs (str "$fs=" fs ", ")))]
     (concat
-     (list (indent depth) "cylinder (" fargs "h=" h)
+     (list (indent depth) "cylinder(" fargs "h=" h)
      (if r (list ", r=" r) (list ", r1=" r1 ", r2=" r2))
      (when center (list ", center=true"))
      (list ");\n"))))
 
 (defmethod write-expr :polyhedron [depth [form {:keys [points faces convexity]}]]
-  `(~@(indent depth) "polyhedron ("
+  `(~@(indent depth) "polyhedron("
     "points=[[" ~(join "], [" (map #(join ", " %1) points)) "]], "
     "faces=[[" ~(join "], [" (map #(join ", " %1) faces)) "]]"
     ~@(if (nil? convexity) [] [", convexity=" convexity])
@@ -130,136 +132,93 @@
 
 (defmethod write-expr :resize [depth [form {:keys [x y z auto]} & block]]
   (concat
-   (list (indent depth) "resize ([" x ", " y ", " z "]")
+   (list (indent depth) "resize([" x ", " y ", " z "]")
    (list (when-not (nil? auto)
-           (str " auto="
+           (str ", auto="
                 (if (coll? auto)
                   (str "[" (join ", " (map true? auto)) "]")
                   (true? auto)))))
-   "){\n"
-   (mapcat #(write-expr (inc depth) %1) block)
+   ") {\n"
+   (write-block depth block)
    (list (indent depth) "}\n")))
 
 (defmethod write-expr :translate [depth [form [x y z] & block]]
-  (concat
-   (list (indent depth) "translate ([" x ", " y ", " z "]) {\n")
-   (mapcat #(write-expr (inc depth) %1) block)
-   (list (indent depth) "}\n")))
+  (write-level (str "translate([" x ", " y ", " z "])") depth block))
 
 (defmethod write-expr :rotatev [depth [form [a [x y z]] & block]]
-  (concat
-   (list (indent depth) "rotate (a=" (rad->deg a) ", v=[" x ", " y ", " z "]) {\n")
-   (write-block depth block)
-   (list (indent depth) "}\n")))
+  (write-level (str "rotate(a=" a ", v=[" x ", " y ", " z "])") depth block))
 
-(defmethod write-expr :rotatec [depth [form [x y z]] & block]
-  (concat
-   (list (indent depth) "rotate ([" (rad->deg x) "," (rad->deg y) "," (rad->deg z) "]) {\n")
-   (write-block depth block)
-   (list (indent depth) "}\n")))
+(defmethod write-expr :rotatec [depth [form [x y z] & block]]
+  (write-level (str "rotate([" x ", " y ", " z "])") depth block))
 
 (defmethod write-expr :scale [depth [form [x y z] & block]]
-  (concat
-   (list (indent depth) "scale ([" x ", " y ", " z "]) {\n")
-   (write-block depth block)
-   (list (indent depth) "}\n")))
+  (write-level (str "scale([" x ", " y ", " z "])") depth block))
 
 (defmethod write-expr :mirror [depth [form [x y z] & block]]
-  (concat
-   (list (indent depth) "mirror ([" x ", " y ", " z "]) {\n")
-   (write-block depth block)
-   (list (indent depth) "}\n")))
+  (write-level (str "mirror([" x ", " y ", " z "])") depth block))
 
 (defmethod write-expr :color [depth [form [r g b a] & block]]
-  (concat
-    (list (indent depth) "color ([" r ", " g ", " b ", " a"]) {\n")
-    (write-block depth block)
-    (list (indent depth) "}\n")))
+  (write-level (str "color([" r ", " g ", " b ", " a"])") depth block))
 
 (defmethod write-expr :hull [depth [form & block]]
-  (concat
-   (list (indent depth) "hull () {\n")
-   (mapcat #(write-expr (inc depth) %1) block)
-   (list (indent depth) "}\n")))
+  (write-level "hull()" depth block))
 
 (defmethod write-expr :offset [depth [form {:keys [r]} & block]]
-  (concat
-   (list (indent depth) "offset (r = " r ") {\n")
-   (mapcat #(write-expr (inc depth) %1) block)
-   (list (indent depth) "}\n")))
+  (write-level (str "offset(r=" r ")") depth block))
 
 (defmethod write-expr :minkowski [depth [form & block]]
-  (concat
-   (list (indent depth) "minkowski () {\n")
-   (mapcat #(write-expr (inc depth) %1) block)
-   (list (indent depth) "}\n")))
+  (write-level "minkowski()" depth block))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Boolean operations
 
 (defmethod write-expr :union [depth [form & block]]
-  (concat
-   (list (indent depth) "union () {\n")
-   (write-block depth block)
-   (list (indent depth) "}\n")))
+  (write-level "union()" depth block))
 
 (defmethod write-expr :difference [depth [form & block]]
-  (concat
-   (list (indent depth) "difference () {\n")
-   (mapcat #(write-expr (inc depth) %1) block)
-   (list (indent depth) "}\n")))
+  (write-level "difference()" depth block))
 
 (defmethod write-expr :intersection [depth [form & block]]
-  (concat
-   (list (indent depth) "intersection () {\n")
-   (mapcat #(write-expr (inc depth) %1) block)
-   (list (indent depth) "}\n")))
+  (write-level "intersection()" depth block))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; other
 
 (defmethod write-expr :projection [depth [form {:keys [cut]} & block]]
-  (concat
-   (list (indent depth) "projection (cut = " cut ") {\n")
-   (mapcat #(write-expr (inc depth) %1) block)
-   (list (indent depth) "}\n")))
+  (write-level (str "projection(cut=" cut ")") depth block))
 
 (defmethod write-expr :extrude-linear [depth [form {:keys [height twist convexity center]} & block]]
   (concat
-   (list (indent depth) "linear_extrude (height=" height)
-   (if (nil? twist) [] (list ", twist=" (rad->deg twist)))
+   (list (indent depth) "linear_extrude(height=" height)
+   (if (nil? twist) [] (list ", twist=" twist))
    (if (nil? convexity) [] (list ", convexity=" convexity))
    (when center (list ", center=true"))
-   (list "){\n")
-
-   (mapcat #(write-expr (inc depth) %1) block)
+   (list ") {\n")
+   (write-block depth block)
    (list (indent depth) "}\n")))
 
 (defmethod write-expr :extrude-rotate [depth [form {:keys [convexity]} & block]]
   (concat
-   (list (indent depth) "rotate_extrude (")
+   (list (indent depth) "rotate_extrude(")
    (if (nil? convexity) [] (list "convexity=" convexity))
    (list ") {\n")
-   (mapcat #(write-expr (inc depth) %1) block)
+   (write-block depth block)
    (list (indent depth) "}\n")))
 
 (defmethod write-expr :render [depth [form {:keys [convexity]} & block]]
-  (concat
-   (list (indent depth) (str "render (convexity=" convexity ") {\n"))
-   (mapcat #(write-expr (inc depth) %1) block)
-   (list (indent depth) "}\n")))
+  (write-level (str "render(convexity=" convexity ")") depth block))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; special variables
 
 (defmethod write-expr :fa [depth [form x]]
-  (list (indent depth) "$fa = " x ";\n"))
+  (list (indent depth) "$fa=" x ";\n"))
 
 (defmethod write-expr :fn [depth [form x]]
-  (list (indent depth) "$fn = " x ";\n"))
+  (list (indent depth) "$fn=" x ";\n"))
 
 (defmethod write-expr :fs [depth [form x]]
-  (list (indent depth) "$fs = " x ";\n"))
+  (list (indent depth) "$fs=" x ";\n"))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; output
