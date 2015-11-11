@@ -30,6 +30,12 @@
     (list (indent depth) "}\n")))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Note/Comment
+
+(defmethod write-expr :comment [depth [form text]]
+  (list (indent depth) "// " text "\n"))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Modifier
 
 (defmethod write-expr :modifier [depth [form modifier & block]]

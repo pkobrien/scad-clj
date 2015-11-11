@@ -49,6 +49,12 @@
 (defn -! [& block] (modifier :! block))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Comment line
+
+(defn note [text]
+  `(:comment ~text))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Include & call into Scad libraries
 
 (defn import [file]
@@ -62,8 +68,8 @@
 
 (defn libraries [& {uses :use includes :include}]
   (concat
-   (map use uses)
-   (map include includes)))
+    (map use uses)
+    (map include includes)))
 
 (defn call [function & args]
   `(:call {:function ~(name function)} ~args))
@@ -74,18 +80,18 @@
 (defn square [x y & {:keys [center] :or {center *center*}}]
   `(:square ~{:x x, :y y, :center center}))
 
-(defn circle [r]
+(defn circle [r & {:keys [fa fn fs]}]
   (let [args (merge {:r r}
-                    (if *fa* {:fa *fa*})
-                    (if *fn* {:fn *fn*})
-                    (if *fs* {:fs *fs*}))]
+                    (or (if fa {:fa fa}) (if *fa* {:fa *fa*}))
+                    (or (if fn {:fn fn}) (if *fn* {:fn *fn*}))
+                    (or (if fs {:fs fs}) (if *fs* {:fs *fs*})))]
     `(:circle ~args)))
 
 (defn polygon
   ([points]
-     `(:polygon {:points ~points}))
+   `(:polygon {:points ~points}))
   ([points paths & {:keys [convexity]}]
-     `(:polygon {:points ~points, :paths ~paths, :convexity ~convexity})))
+   `(:polygon {:points ~points, :paths ~paths, :convexity ~convexity})))
 
 (defn text [text & {:as args}]
   (let [args (merge {:text text} args)]
@@ -94,29 +100,29 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; 3D
 
-(defn sphere [r]
+(defn sphere [r & {:keys [fa fn fs]}]
   (let [args (merge {:r r}
-                    (if *fa* {:fa *fa*})
-                    (if *fn* {:fn *fn*})
-                    (if *fs* {:fs *fs*}))]
+                    (or (if fa {:fa fa}) (if *fa* {:fa *fa*}))
+                    (or (if fn {:fn fn}) (if *fn* {:fn *fn*}))
+                    (or (if fs {:fs fs}) (if *fs* {:fs *fs*})))]
     `(:sphere ~args)))
 
 (defn cube [x y z & {:keys [center] :or {center *center*}}]
   `(:cube ~{:x x, :y y, :z z, :center center}))
 
-(defn cylinder [rs h & {:keys [center] :or {center *center*}}]
-  (let [fargs (merge (if *fa* {:fa *fa*})
-                     (if *fn* {:fn *fn*})
-                     (if *fs* {:fs *fs*}))]
+(defn cylinder [rs h & {:keys [fa fn fs center] :or {center *center*}}]
+  (let [fargs (merge (or (if fa {:fa fa}) (if *fa* {:fa *fa*}))
+                     (or (if fn {:fn fn}) (if *fn* {:fn *fn*}))
+                     (or (if fs {:fs fs}) (if *fs* {:fs *fs*})))]
     (match [rs]
-      [[r1 r2]] `(:cylinder ~(merge fargs {:h h, :r1 r1, :r2 r2, :center center}))
-      [r]       `(:cylinder ~(merge fargs {:h h, :r r, :center center})))))
+           [[r1 r2]] `(:cylinder ~(merge fargs {:h h, :r1 r1, :r2 r2, :center center}))
+           [r] `(:cylinder ~(merge fargs {:h h, :r r, :center center})))))
 
 (defn polyhedron
   ([points faces]
-    `(:polyhedron {:points ~points :faces ~faces}))
+   `(:polyhedron {:points ~points :faces ~faces}))
   ([points faces & {:keys [convexity]}]
-    `(:polyhedron {:points ~points :faces ~faces :convexity ~convexity})))
+   `(:polyhedron {:points ~points :faces ~faces :convexity ~convexity})))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; transformations
@@ -152,35 +158,35 @@
 (defn color [[r g b a] & block]
   `(:color [~r ~g ~b ~a] ~@block))
 
-(defn hull [ & block]
-  `(:hull  ~@block))
+(defn hull [& block]
+  `(:hull ~@block))
 
 (defn offset [r & block]
   `(:offset {:r ~r} ~@block))
 
-(defn minkowski [ & block]
+(defn minkowski [& block]
   `(:minkowski ~@block))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Boolean operations
 
-(defn union [ & block]
-  `(:union  ~@block))
+(defn union [& block]
+  `(:union ~@block))
 
-(defn intersection [ & block]
-  `(:intersection  ~@block))
+(defn intersection [& block]
+  `(:intersection ~@block))
 
-(defn difference [ & block]
-  `(:difference  ~@block))
+(defn difference [& block]
+  `(:difference ~@block))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; other
+;; Other
 
 (defn extrude-linear [{:keys [height twist convexity center] :or {center *center*}} & block]
   `(:extrude-linear {:height ~height :twist ~twist :convexity ~convexity :center ~center} ~@block))
 
 (defn extrude-rotate
-  ([ block ] `(:extrude-rotate {} ~block))
+  ([block] `(:extrude-rotate {} ~block))
   ([{:keys [convexity]} block] `(:extrude-rotate {:convexity ~convexity} ~block))
   )
 
